@@ -7,25 +7,9 @@ from scipy.cluster.hierarchy import linkage, fcluster
 
 def analyze_fleet(csv_file, method="ward", plot=True, distance_threshold=0.3):
     """
-    Simplified fleet-based anomaly detection implementation.
-    Each row in the CSV = one machine.
-
-    Parameters
-    ----------
-    csv_file : str
-        Path to CSV with one column 'vibration'.
-    method : str
-        Linkage method for hierarchical clustering
-    plot : bool
-        If True, generate plots
-    distance_threshold : float
-        Threshold for cutting dendrogram (fraction of max distance)
-
-    Returns
-    -------
-    dict with analysis results
+    analyze fleet data
     """
-    # Load data
+    # load data
     df = pd.read_csv(csv_file)
     data = df["vibration"].values
     n_machines = len(data)
@@ -33,14 +17,14 @@ def analyze_fleet(csv_file, method="ward", plot=True, distance_threshold=0.3):
     print(f"Loaded {n_machines} machines")
     print(f"Data range: {np.min(data):.4f} to {np.max(data):.4f}")
     
-    # Normalize data (min-max scaling)
+    # min-max scaling
     data_min, data_max = np.min(data), np.max(data)
     if data_max - data_min == 0:
         data_normalized = np.zeros_like(data)
     else:
         data_normalized = (data - data_min) / (data_max - data_min)
     
-    # Manual pairwise distance calculation for 1D data
+    # pairwise distance calculation
     def calculate_distances(values):
         n = len(values)
         distances = np.zeros((n, n))
@@ -50,17 +34,17 @@ def analyze_fleet(csv_file, method="ward", plot=True, distance_threshold=0.3):
                 distances[i, j] = distances[j, i] = dist
         return distances
     
-    # Calculate distance matrix
+    # distance matrix
     distance_matrix = calculate_distances(data_normalized)
     
-    # Convert to condensed form for scipy
+    # condensed form for scipy
     condensed_dist = []
     for i in range(n_machines):
         for j in range(i+1, n_machines):
             condensed_dist.append(distance_matrix[i, j])
     condensed_dist = np.array(condensed_dist)
     
-    # Hierarchical clustering
+    # hierarchical clustering
     try:
         Z = linkage(condensed_dist, method=method)
         print(f"Clustering successful with {method} method")
@@ -69,7 +53,7 @@ def analyze_fleet(csv_file, method="ward", plot=True, distance_threshold=0.3):
         # Fallback: simple distance-based clustering
         return simple_distance_clustering(data, data_normalized, plot)
     
-    # Determine clusters by cutting dendrogram
+    # determine clusters by dendrogram
     max_distance = np.max(Z[:, 2])
     cut_distance = distance_threshold * max_distance
     clusters = fcluster(Z, t=cut_distance, criterion='distance')
@@ -79,9 +63,9 @@ def analyze_fleet(csv_file, method="ward", plot=True, distance_threshold=0.3):
         cluster_size = np.sum(clusters == cluster_id)
         print(f"Cluster {cluster_id}: {cluster_size} machines")
     
-    # Identify healthy cluster (largest cluster)
+    # healthy cluster (largest cluster)
     cluster_counts = np.bincount(clusters)
-    # Skip index 0 since cluster IDs start from 1
+    # skip index 0 since cluster IDs start from 1
     if len(cluster_counts) > 1:
         healthy_cluster_id = np.argmax(cluster_counts[1:]) + 1
     else:
@@ -93,20 +77,20 @@ def analyze_fleet(csv_file, method="ward", plot=True, distance_threshold=0.3):
     print(f"Healthy cluster: {healthy_cluster_id} ({len(healthy_machines)} machines)")
     print(f"Anomalous machines: {len(anomalous_machines)}")
     
-    # Calculate healthy centroid
+    # healthy centroid
     healthy_data = data_normalized[healthy_machines]
     healthy_centroid = np.mean(healthy_data)
     
-    # Calculate distances to healthy centroid
+    # distances to healthy centroid
     distances_to_centroid = np.abs(data_normalized - healthy_centroid)
     
-    # Calculate anomaly scores
+    # anomaly scores
     anomaly_scores = np.zeros(n_machines)
     for i in range(n_machines):
         if clusters[i] == healthy_cluster_id:
-            anomaly_scores[i] = 0.0  # Healthy
+            anomaly_scores[i] = 0.0  # healthy
         else:
-            # Score based on distance to healthy centroid
+            # score based on distance to healthy centroid
             max_dist = np.max(distances_to_centroid)
             if max_dist > 0:
                 anomaly_scores[i] = distances_to_centroid[i] / max_dist
@@ -135,21 +119,21 @@ def simple_distance_clustering(data, data_normalized, plot):
     """Fallback clustering method using simple distance threshold"""
     n_machines = len(data)
     
-    # Calculate median and standard deviation
+    # median and standard deviation
     median_val = np.median(data_normalized)
     std_val = np.std(data_normalized)
     
-    # Define threshold for anomaly (2 standard deviations)
+    # threshold for anomaly (2 standard deviations)
     threshold = 2.0 * std_val
     
-    # Classify machines
+    # classify machines
     distances_to_median = np.abs(data_normalized - median_val)
     clusters = np.ones(n_machines, dtype=int)
     anomaly_scores = np.zeros(n_machines)
     
     for i in range(n_machines):
         if distances_to_median[i] > threshold:
-            clusters[i] = 2  # Anomalous cluster
+            clusters[i] = 2  # anomalous cluster
             anomaly_scores[i] = min(distances_to_median[i] / (3 * std_val), 1.0)
     
     healthy_machines = np.where(clusters == 1)[0]
@@ -185,7 +169,7 @@ def create_plots(results, n_machines, healthy_cluster_id):
     healthy_centroid = results["healthy_centroid"]
     distances = results["distances"]
     
-    # 1. Dendrogram (if available)
+    # dendrogram
     if results["linkage_matrix"] is not None:
         try:
             dendrogram(results["linkage_matrix"], ax=axes[0, 0])
@@ -201,7 +185,7 @@ def create_plots(results, n_machines, healthy_cluster_id):
                        ha='center', va='center', transform=axes[0, 0].transAxes)
         axes[0, 0].set_title("Clustering Method")
     
-    # 2. Data scatter with cluster colors
+    # scatter plot
     colors = []
     for i in range(n_machines):
         if clusters[i] == healthy_cluster_id:
@@ -211,7 +195,7 @@ def create_plots(results, n_machines, healthy_cluster_id):
     
     axes[0, 1].scatter(range(n_machines), data, c=colors, alpha=0.7, s=50)
     
-    # Add centroid line (convert back to original scale)
+    # centroid line (convert back to original scale)
     data_min, data_max = np.min(data), np.max(data)
     centroid_original = healthy_centroid * (data_max - data_min) + data_min
     axes[0, 1].axhline(y=centroid_original, color="blue", linestyle="--", 
@@ -223,7 +207,7 @@ def create_plots(results, n_machines, healthy_cluster_id):
     axes[0, 1].legend()
     axes[0, 1].grid(True, alpha=0.3)
     
-    # 3. Anomaly scores
+    # anomaly scores
     bar_colors = ['red' if score > 0.1 else 'green' for score in anomaly_scores]
     axes[1, 0].bar(range(n_machines), anomaly_scores, color=bar_colors, alpha=0.7)
     axes[1, 0].axhline(y=0.5, color='black', linestyle='--', alpha=0.7, 
@@ -234,7 +218,7 @@ def create_plots(results, n_machines, healthy_cluster_id):
     axes[1, 0].legend()
     axes[1, 0].grid(True, alpha=0.3)
     
-    # 4. Distance distribution
+    # distance distribution
     axes[1, 1].hist(distances, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
     axes[1, 1].axvline(x=np.mean(distances), color='red', linestyle='--', 
                       label=f'Mean Distance ({np.mean(distances):.4f})')
@@ -247,13 +231,13 @@ def create_plots(results, n_machines, healthy_cluster_id):
     plt.tight_layout()
     plt.show()
     
-    # Summary
+    # statistics
     print(f"Total machines: {n_machines}")
     print(f"Healthy machines: {len(results['healthy_machines'])}")
     print(f"Anomalous machines: {len(results['anomalous_machines'])}")
     print(f"Healthy centroid: {centroid_original:.6f}\n\nThe following are the clusters identified, that are anomalous:")
     
-    # Print clusters with ranges and values
+    # print clusters with ranges and values
     unique_clusters = np.unique(clusters)
     for count,cluster_id in enumerate(unique_clusters):
         if count == len(unique_clusters)-1:
@@ -264,13 +248,13 @@ def create_plots(results, n_machines, healthy_cluster_id):
         print(f"Cluster {cluster_id} ({cluster_range[0]:.4f} - {cluster_range[1]:.4f}): {cluster_values.tolist()}\n")
 
     
-    # Show top anomaly scores
+    # show top 5 anomaly scores
     top_anomaly_indices = np.argsort(anomaly_scores)[-5:][::-1]
     print(f"\nTop 5 anomaly scores:")
     for idx in top_anomaly_indices:
         print(f"Machine {idx}: score={anomaly_scores[idx]:.4f}, value={data[idx]:.6f}")
 
 
-# Example usage
+# using it on a subset of the generated data, wrapped in main so that it doesn't run on import
 if __name__ == "__main__":
     results = analyze_fleet("./Dataset/Data/simulated_vibration_small.csv", method="ward", plot=True, distance_threshold=0.6)
