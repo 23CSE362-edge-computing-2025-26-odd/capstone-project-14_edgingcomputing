@@ -1,88 +1,86 @@
-
-import os, json, time, threading, collections, statistics
-import numpy as np
-import pandas as pd
+import os, json, time, threading
 import paho.mqtt.client as mqtt
 from datetime import datetime
 
+# --- Environment Configuration ---
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-WINDOW_SIZE = int(os.getenv("WINDOW_SIZE", "50"))
-Z_THRESH = float(os.getenv("Z_THRESH", "2.5"))
+HEARTBEAT_TIMEOUT = int(os.getenv("HEARTBEAT_TIMEOUT", "10")) # Seconds to wait for heartbeat
+STATUS_PUBLISH_INTERVAL = int(os.getenv("STATUS_PUBLISH_INTERVAL", "5")) # Seconds
 
-metrics = ["temperature","humidity","pressure","electrical","vibration"]
+# --- Data Stores ---
+last_heartbeats = {} # {edge_id: timestamp}
+edge_statuses = {} # {edge_id: "alive" | "unresponsive"}
 
-buffers = collections.defaultdict(lambda: collections.deque(maxlen=WINDOW_SIZE))
-
-client = mqtt.Client(client_id="fog-collector", clean_session=True)
+# --- MQTT Client Setup ---
+client = mqtt.Client(client_id="fog-controller", clean_session=True)
 
 def on_connect(client, userdata, flags, rc, properties=None):
-    client.subscribe("edge/+/sensors")
+    """Callback for when the client connects to the MQTT broker."""
+    print("[fog] Connected to MQTT Broker.")
+    # Only subscribe to heartbeat topics
     client.subscribe("edge/+/heartbeat")
 
 def on_message(client, userdata, msg):
-    topic = msg.topic
-    if topic.endswith("/sensors"):
-        data = json.loads(msg.payload.decode())
-        edge_id = data["edge_id"]
-        buffers[edge_id].append(data)
-    elif topic.endswith("/heartbeat"):
-        pass
+    """Callback to process incoming heartbeat messages from edge nodes."""
+    topic_parts = msg.topic.split('/')
+    edge_id = topic_parts[1]
+    
+    if topic_parts[-1] == "heartbeat":
+        # Record the time of the heartbeat
+        last_heartbeats[edge_id] = time.time()
+        # If the node was previously unresponsive, mark it as alive
+        if edge_statuses.get(edge_id) != "alive":
+            edge_statuses[edge_id] = "alive"
+            print(f"[fog] Edge node '{edge_id}' is now alive.")
 
 client.on_connect = on_connect
 client.on_message = on_message
 
-def compute_anomalies():
+def check_heartbeats():
+    """Periodically checks if edge nodes are still sending heartbeats."""
     while True:
-        time.sleep(2.0)
-        # Build latest dataframe across edges (last sample)
-        latest = []
-        for edge, buf in buffers.items():
-            if len(buf) == 0: 
-                continue
-            latest.append({ "edge_id": edge, **buf[-1] })
-        if not latest:
-            continue
-        df = pd.DataFrame(latest)
-        df = df[["edge_id"] + metrics]
-        # fleet z-score per metric
-        anomalies = []
-        for metric in metrics:
-            mu = df[metric].mean()
-            sigma = df[metric].std(ddof=0) or 1e-6
-            df[f"{metric}_z"] = (df[metric] - mu) / sigma
-        df["anom_count"] = (df[[f"{m}_z" for m in metrics]].abs() > Z_THRESH).sum(axis=1)
-        df["anom_score"] = df["anom_count"] / len(metrics)
-        # Decide and act
-        for _, row in df.iterrows():
-            decision = "OK"
-            if row["anom_score"] >= 0.2:  # at least one metric z>threshold
-                decision = "ALERT"
-                # command actuator for that edge
-                cmd = {"edge_id": row["edge_id"], "ts": datetime.utcnow().isoformat()+"Z", "alarm": True, "reason": "anomaly_detected", "score": row["anom_score"]}
-                client.publish(f"fog/actuators/{row['edge_id']}", json.dumps(cmd), qos=0)
-            report = {
-                "edge_id": row["edge_id"],
-                "ts": datetime.utcnow().isoformat()+"Z",
-                "decision": decision,
-                "score": round(float(row["anom_score"]),3),
-                "metrics": {m: float(row[m]) for m in metrics}
-            }
-            client.publish("cloud/reports", json.dumps(report), qos=0)
-        # publish fleet snapshot
+        now = time.time()
+        # Iterate over a copy of the items to allow modification during iteration
+        for edge_id, last_ts in list(last_heartbeats.items()):
+            if now - last_ts > HEARTBEAT_TIMEOUT:
+                # If the node has missed a heartbeat, mark it as unresponsive
+                if edge_statuses.get(edge_id) != "unresponsive":
+                    edge_statuses[edge_id] = "unresponsive"
+                    print(f"[fog] Edge node '{edge_id}' has become unresponsive.")
+        time.sleep(HEARTBEAT_TIMEOUT / 2)
+
+def publish_fleet_status():
+    """Periodically publishes the status of all known edge nodes to the cloud."""
+    while True:
+        time.sleep(STATUS_PUBLISH_INTERVAL)
+        
+        edges_list = []
+        for edge_id, status in edge_statuses.items():
+             edges_list.append({
+                 "edge_id": edge_id,
+                 "status": status
+             })
+
         snapshot = {
             "ts": datetime.utcnow().isoformat()+"Z",
-            "fleet_size": len(df),
-            "threshold": Z_THRESH,
-            "edges": df[["edge_id","anom_score"]].to_dict(orient="records")
+            "fleet_size": len(edge_statuses),
+            "edges": edges_list
         }
         client.publish("cloud/fleet_snapshot", json.dumps(snapshot), qos=0)
 
+
 if __name__ == "__main__":
-    print(f"[fog] connecting to MQTT {MQTT_HOST}:{MQTT_PORT}")
+    print(f"[fog] Connecting to MQTT at {MQTT_HOST}:{MQTT_PORT}")
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     client.loop_start()
-    t = threading.Thread(target=compute_anomalies, daemon=True)
-    t.start()
+
+    # Start the heartbeat checker in a background thread
+    threading.Thread(target=check_heartbeats, daemon=True).start()
+    # Start the fleet status publisher in a background thread
+    threading.Thread(target=publish_fleet_status, daemon=True).start()
+    
+    print("[fog] Fog controller started for heartbeat monitoring.")
     while True:
         time.sleep(1)
+

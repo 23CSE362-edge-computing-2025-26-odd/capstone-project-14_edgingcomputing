@@ -14,10 +14,14 @@ This repo simulates your architecture diagram using **Python + Docker**:
 cd fleet_anomaly_sim
 
 # 2) Launch the stack
-docker compose up --build
+sudo docker-compose up --build
 
 # 3) Open the dashboard
 #    http://localhost:8501
+
+# 4) Closing the connections
+#     Ctrl+C
+sudo docker-compose down
 ```
 
 You should see `edge1/2/3` printing actuator commands when anomalies are detected,
