@@ -257,4 +257,4 @@ def create_plots(results, n_machines, healthy_cluster_id):
 
 # using it on a subset of the generated data, wrapped in main so that it doesn't run on import
 if __name__ == "__main__":
-    results = analyze_fleet("./Dataset/Data/simulated_vibration_small.csv", method="ward", plot=True, distance_threshold=0.6)
+    results = analyze_fleet("./fleet_anomaly_sim/Dataset/Data/simulated_vibration_small.csv", method="ward", plot=True, distance_threshold=0.6)
