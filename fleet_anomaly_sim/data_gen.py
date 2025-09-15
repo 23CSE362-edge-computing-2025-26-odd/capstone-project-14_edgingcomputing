@@ -48,11 +48,11 @@ def make_vibration_data(samples=25000, fault_percent=0.2, random_seed=42):
     return vibration_data, fault_positions
 
 # generate the data
-vibration_values, fault_indices = make_vibration_data(25000, 0.2, 42)
+vibration_values, fault_indices = make_vibration_data(400, 0.2, 42)
 
 # save as csv file
 df = pd.DataFrame({'vibration': vibration_values})
-df.to_csv('Dataset/Data/simulated_vibration.csv', index=False)
+df.to_csv('./fleet_anomaly_sim/Dataset/Data/simulated_vibration.csv', index=False)
 print(f"Saved data points to simulated_vibration.csv")
 
 # visualizing the data
@@ -68,9 +68,9 @@ plt.grid(True, alpha=0.3)
 
 # time vs fault occurence
 plt.subplot(2, 2, 2)
-sample_data = vibration_values[:3000]
+sample_data = vibration_values
 plt.plot(sample_data, linewidth=0.8, color='green')
-plt.title('Vibration Over Time (First 1000 readings)')
+plt.title('Vibration Over Time')
 plt.xlabel('Time Index')
 plt.ylabel('Vibration Amplitude')
 plt.grid(True, alpha=0.3)
