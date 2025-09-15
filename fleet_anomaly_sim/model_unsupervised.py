@@ -24,7 +24,7 @@ def analyze_fleet(csv_file, method="single", plot=True, thrcc=0.9):
     else:
         data_normalized = (data - data_min) / (data_max - data_min)
 
-    # pairwise distance matrix (absolute difference as proxy measure)
+    # pairwise distance matrix
     def calculate_distances(values):
         n = len(values)
         distances = np.zeros((n, n))
@@ -42,13 +42,12 @@ def analyze_fleet(csv_file, method="single", plot=True, thrcc=0.9):
     # hierarchical clustering
     Z = linkage(condensed_dist, method=method)
 
-    # cut dendrogram: in paper, thrcc is used. Here we approximate with distance cutoff.
-    # For simplicity, use proportion of max distance as cut
+    # cut the dendrogram
     max_distance = np.max(Z[:, 2])
     cut_distance = thrcc * max_distance
     clusters = fcluster(Z, t=cut_distance, criterion='distance')
 
-    # anomaly score: fraction of machines not in this cluster
+    # anomaly_score(machine) = 1 - (cluster_size / total_machines)
     anomaly_scores = np.zeros(n_machines)
     for i in range(n_machines):
         cluster_id = clusters[i]
