@@ -1,5 +1,5 @@
 
-# Fleet Anomaly Detection — Edge ⇢ Fog ⇢ Cloud (Simulation)
+# Fleet Anomaly Detection — Edge ⇢ Fog ⇢ Cloud (Simulation using Docker)
 
 This repo simulates your architecture diagram using **Python + Docker**:
 - **Edge (STM32/RPi simulated)**: 3 containers publishing sensor data to MQTT.
