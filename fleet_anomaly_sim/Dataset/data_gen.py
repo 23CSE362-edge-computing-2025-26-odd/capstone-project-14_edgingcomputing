@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def make_vibration_data(samples=25000, fault_percent=0.2, random_seed=42):
+def make_vibration_data(samples=25000, fault_percent=0.1, random_seed=32):
     """
     Simulate data based on real-world data taken from https://data.nasa.gov/dataset/ims-bearings
     """
@@ -48,35 +48,26 @@ def make_vibration_data(samples=25000, fault_percent=0.2, random_seed=42):
     return vibration_data, fault_positions
 
 # generate the data
-vibration_values, fault_indices = make_vibration_data(400, 0.2, 42)
+vibration_values, fault_indices = make_vibration_data(200, 0.2, 12)
 
 # save as csv file
 df = pd.DataFrame({'vibration': vibration_values})
-df.to_csv('./fleet_anomaly_sim/Dataset/Data/simulated_vibration.csv', index=False)
-print(f"Saved data points to simulated_vibration.csv")
+df.to_csv('Data/simulated_vibration_edge.csv', index=False)
+print(f"Saved data points to simulated_vibration_edge.csv")
 
 # visualizing the data
 plt.figure(figsize=(12, 8))
 
 # histogram
-plt.subplot(2, 2, 1)
+plt.subplot(2, 1, 1)
 plt.hist(vibration_values, bins=50, alpha=0.7, color='blue', edgecolor='black')
 plt.title('Distribution of Vibration Values')
 plt.xlabel('Vibration Amplitude')
 plt.ylabel('Frequency')
 plt.grid(True, alpha=0.3)
 
-# time vs fault occurence
-plt.subplot(2, 2, 2)
-sample_data = vibration_values
-plt.plot(sample_data, linewidth=0.8, color='green')
-plt.title('Vibration Over Time')
-plt.xlabel('Time Index')
-plt.ylabel('Vibration Amplitude')
-plt.grid(True, alpha=0.3)
-
 # scatter plot
-plt.subplot(2, 2, 3)
+plt.subplot(2, 1, 2)
 normal_indices = []
 for i in range(len(vibration_values)):
     if i not in fault_indices:

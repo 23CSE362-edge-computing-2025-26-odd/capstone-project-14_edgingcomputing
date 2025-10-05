@@ -56,12 +56,12 @@ def analyze_fleet(csv_file, method="single", plot=True, thrcc=0.9):
 
     # thresholding
     anomaly_threshold = 2/3
-    anomalous_machines = np.where(anomaly_scores > anomaly_threshold)[0]
-    healthy_machines = np.where(anomaly_scores <= anomaly_threshold)[0]
+    anomalous_machines = np.where(anomaly_scores > anomaly_threshold)[0].tolist()
+    healthy_machines = np.where(anomaly_scores <= anomaly_threshold)[0].tolist()
 
     print(f"Clusters found: {len(np.unique(clusters))}")
-    print(f"Healthy machines: {len(healthy_machines)}")
-    print(f"Anomalous machines: {len(anomalous_machines)}")
+    print(f"Healthy machines: {healthy_machines}")
+    print(f"Anomalous machines: {anomalous_machines}")
 
     results = {
         "clusters": clusters,
@@ -124,5 +124,5 @@ def create_plots(results, n_machines):
 
 
 if __name__ == "__main__":
-    results = analyze_fleet("./fleet_anomaly_sim/Dataset/Data/simulated_vibration_small.csv",
+    results = analyze_fleet("edge/Data/simulated_vibration_edge2.csv",
                             method="single", plot=True, thrcc=0.2)

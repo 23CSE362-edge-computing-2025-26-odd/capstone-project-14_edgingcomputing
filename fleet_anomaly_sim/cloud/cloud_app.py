@@ -1,4 +1,7 @@
-import os, json, time, threading
+import os
+import json
+import time
+import threading
 import streamlit as st
 import pandas as pd
 import paho.mqtt.client as mqtt
@@ -12,24 +15,50 @@ MAX_REPORTS = int(os.getenv("MAX_REPORTS", "500"))
 # --- In-memory Data Stores ---
 reports_stream = deque(maxlen=MAX_REPORTS)
 fleet_snapshot = {}
-latest_reports = {} # Stores the most recent report from each edge device
+# Stores the most recent PROCESSED report from each edge device
+latest_reports = {}
 
 # --- MQTT Client Setup ---
 def on_connect(client, userdata, flags, rc, properties=None):
     """Callback for when the client connects to MQTT."""
     print("[cloud] Connected to MQTT Broker.")
-    client.subscribe("cloud/reports") # From Edge nodes
-    client.subscribe("cloud/fleet_snapshot") # From Fog
+    client.subscribe("cloud/reports")  # From Edge nodes
+    client.subscribe("cloud/fleet_snapshot")  # From Fog
 
 def on_message(client, userdata, msg):
-    """Callback for when a message is received from MQTT."""
-    global fleet_snapshot
+    """
+    Callback for when a message is received from MQTT.
+    This function is updated to handle the new, richer report format from edge nodes.
+    """
+    global fleet_snapshot, reports_stream, latest_reports
+
     if msg.topic == "cloud/reports":
+        # Decode the incoming message payload
         data = json.loads(msg.payload.decode())
-        reports_stream.appendleft(data)
-        latest_reports[data['edge_id']] = data # Keep track of the latest report
+
+        processed_report = {
+            "edge_id": data.get("edge_id", "N/A"),
+            "ts": data.get("ts", "N/A"),
+            "n_machines": data.get("n_machines", 0),
+            "metrics": data.get("metrics", []),
+            "anomalous_machines": data.get("anomalous_machines", []),
+        }
+
+        # Append the processed report to our live stream data
+        reports_stream.appendleft(processed_report)
+        # Update the latest report for this specific edge_id for the status view
+        if 'edge_id' in data:
+            latest_reports[data['edge_id']] = processed_report
+
     elif msg.topic == "cloud/fleet_snapshot":
-        fleet_snapshot = json.loads(msg.payload.decode())
+        # Load the fleet-wide snapshot from the fog layer
+        data = json.loads(msg.payload.decode())
+        fleet_snapshot = {
+            "ts": data.get("ts", "N/A"),
+            "fleet_size": data.get("fleet_size", 0),
+            "edges": data.get("edges", []),
+        }
+
 
 def mqtt_thread_func():
     """Function to run the MQTT client loop in a separate thread."""
@@ -38,6 +67,7 @@ def mqtt_thread_func():
     client.on_message = on_message
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     client.loop_forever()
+
 
 threading.Thread(target=mqtt_thread_func, daemon=True).start()
 
@@ -55,35 +85,39 @@ while True:
             st.subheader("Fleet Snapshot")
             ts = fleet_snapshot.get('ts', 'N/A')
             size = fleet_snapshot.get('fleet_size', 0)
-            st.write(f"**Timestamp:** {ts} | **Fleet Size:** {size}")
+            st.write(f"**Timestamp:** {ts} | **Edge nodes:** {size}")
 
             edges_data = fleet_snapshot.get("edges", [])
+            for i in range(len(edges_data)):
+                edges_data[i]['n_machines'] = latest_reports.get(edges_data[i]['edge_id'], {}).get('n_machines', 0)
             if edges_data:
+                # Base dataframe with node status (alive/dead)
                 df_status = pd.DataFrame(edges_data)
-                
-                # Add latest anomaly score to the status dataframe
-                df_status['anom_score'] = df_status['edge_id'].map(lambda id: latest_reports.get(id, {}).get('score', 0))
-                
-                st.write("Node Status & Anomaly Score")
-                st.dataframe(df_status[['edge_id', 'status', 'anom_score']], use_container_width=True)
 
-                st.write("Anomaly Scores (Alive Nodes)")
-                df_display = df_status[df_status['status'] == 'alive']
-                if not df_display.empty:
-                    # This will now work correctly as 'anom_score' exists
-                    st.bar_chart(df_display.set_index("edge_id")['anom_score'])
-                else:
-                    st.info("No nodes are currently reporting as 'alive'.")
+                st.write("Node Status:")
+                st.dataframe(df_status, use_container_width=True)
+
+                # --- NEW SECTION: Display all anomalous machines ---
+                st.write("Anomalous Machines per Edge Node:")
+                anomalous_list = latest_reports
+                df_anom = pd.DataFrame.from_dict(anomalous_list).T
+                df_anom.drop(columns=['ts', 'metrics','n_machines'], inplace=True, errors='ignore')
+                st.dataframe(df_anom, use_container_width=True)
+
             else:
                 st.info("Waiting for fleet snapshot from the fog layer...")
 
         with col2:
             st.subheader("Live Report Stream")
             if reports_stream:
+                # The DataFrame will now show the flattened report, including all metrics,
+                # n_machines, etc., making the stream much more informative.
                 df_reports = pd.DataFrame(list(reports_stream))
+                cols_to_drop=['score','n_machines','anomalous_machines']
+                df_reports = df_reports.drop(columns=cols_to_drop, errors='ignore')
                 st.dataframe(df_reports, use_container_width=True, height=500)
             else:
                 st.info("Waiting for reports from edge nodes...")
-        
+
     time.sleep(1)
 

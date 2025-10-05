@@ -18,9 +18,16 @@ services:
       - EDGE_ID=edge1
       - MQTT_HOST=mqtt
       - MQTT_PORT=1883
-      - ANOMALY_RATE=0.01
     depends_on:
       - mqtt
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   edge2:
     build: ./edge
@@ -29,9 +36,16 @@ services:
       - EDGE_ID=edge2
       - MQTT_HOST=mqtt
       - MQTT_PORT=1883
-      - ANOMALY_RATE=0.02
     depends_on:
       - mqtt
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   edge3:
     build: ./edge
@@ -40,9 +54,16 @@ services:
       - EDGE_ID=edge3
       - MQTT_HOST=mqtt
       - MQTT_PORT=1883
-      - ANOMALY_RATE=0.00
     depends_on:
       - mqtt
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   fog:
     build: ./fog
@@ -50,8 +71,6 @@ services:
     environment:
       - MQTT_HOST=mqtt
       - MQTT_PORT=1883
-      - WINDOW_SIZE=50
-      - Z_THRESH=2.5
     depends_on:
       - mqtt
 
