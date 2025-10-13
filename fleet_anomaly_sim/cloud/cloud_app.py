@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import paho.mqtt.client as mqtt
 from collections import deque
+import numpy as np
 
 # --- Environment Configuration ---
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
@@ -17,6 +18,36 @@ reports_stream = deque(maxlen=MAX_REPORTS)
 fleet_snapshot = {}
 # Stores the most recent PROCESSED report from each edge device
 latest_reports = {}
+
+def run_fleet_clustering(data):
+
+    data = np.array(data)
+    n_machines = len(data)
+    if n_machines == 0:
+        return []
+
+    # --- normalization (min-max) ---
+    data_min, data_max = np.min(data), np.max(data)
+    if data_max - data_min == 0:
+        data_norm = np.zeros_like(data)
+    else:
+        data_norm = (data - data_min) / (data_max - data_min)
+
+    # --- compute mean distance per point ---
+    distances = np.abs(data_norm[:, None] - data_norm)
+    mean_distances = np.mean(distances, axis=1)
+
+    # --- anomaly scoring ---
+    # Machines far from others get higher mean distance
+    scores = (mean_distances - np.min(mean_distances)) / (
+        np.max(mean_distances) - np.min(mean_distances) + 1e-9
+    )
+
+    # Threshold
+    anomaly_threshold = 0.66
+    anomalous_machines = np.where(scores > anomaly_threshold)[0].tolist()
+
+    return anomalous_machines
 
 # --- MQTT Client Setup ---
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -90,6 +121,10 @@ while True:
             edges_data = fleet_snapshot.get("edges", [])
             for i in range(len(edges_data)):
                 edges_data[i]['n_machines'] = latest_reports.get(edges_data[i]['edge_id'], {}).get('n_machines', 0)
+                if edges_data[i]['status'] != 'alive':
+                    processed_report = latest_reports[edges_data[i]['edge_id']]
+                    processed_report['anomalous_machines'] = run_fleet_clustering(processed_report.get('metrics', []))
+                    latest_reports[edges_data[i]['edge_id']] = processed_report
             if edges_data:
                 # Base dataframe with node status (alive/dead)
                 df_status = pd.DataFrame(edges_data)

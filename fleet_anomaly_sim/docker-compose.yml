@@ -24,10 +24,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+          memory: 64M
 
   edge2:
     build: ./edge
@@ -42,10 +39,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+          memory: 128M
 
   edge3:
     build: ./edge
@@ -60,10 +54,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+          memory: 128M
 
   fog:
     build: ./fog
@@ -73,6 +64,11 @@ services:
       - MQTT_PORT=1883
     depends_on:
       - mqtt
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
 
   cloud:
     build: ./cloud
