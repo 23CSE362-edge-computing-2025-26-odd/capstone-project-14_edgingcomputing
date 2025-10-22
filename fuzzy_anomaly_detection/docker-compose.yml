@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  edge1:
+    build:
+      context: ./edge
+      dockerfile: Dockerfile
+    container_name: edge1
+    environment:
+      - EDGE_ID=edge1
+      - MQTT_HOST=mqtt
+      - MQTT_PORT=1883
+    depends_on:
+      - mqtt
+
+  edge2:
+    build:
+      context: ./edge
+      dockerfile: Dockerfile
+    container_name: edge2
+    environment:
+      - EDGE_ID=edge2
+      - MQTT_HOST=mqtt
+      - MQTT_PORT=1883
+    depends_on:
+      - mqtt
+
+  cloud:
+    build:
+      context: ./cloud
+      dockerfile: Dockerfile
+    container_name: cloud
+    ports:
+      - "8501:8501" # Port for Streamlit dashboard
+    environment:
+      - MQTT_HOST=mqtt
+      - MQTT_PORT=1883
+    depends_on:
+      - mqtt
