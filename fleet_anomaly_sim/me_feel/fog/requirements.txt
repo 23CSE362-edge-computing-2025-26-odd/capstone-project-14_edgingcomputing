@@ -1,0 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.0.1+cpu
+numpy<2
+scikit-learn
+msgpack
+msgpack_numpy
+pandas
+paho-mqtt
